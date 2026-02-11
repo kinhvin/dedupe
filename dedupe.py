@@ -5,9 +5,12 @@ mark them for deletion and delete them accordingly
 
 """ 
 Steps 
-1. Search for duplicates in the directory
+1. Search for duplicates in the chosen directory
 2. Mark duplicates for deletion
-3. Delete the marked duplicates accordingly based on what the user wants to do with them
+3. Keep a copy of each duplicate file by default
+4. Prompt the user to choose duplicate files they would like to keep
+5. Backup the files that are going to be deleted
+6. Delete the remaining duplicates
 """
 
 import os
