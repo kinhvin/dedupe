@@ -11,17 +11,33 @@ Steps
 """
 
 import os
+import shutil
+import uuid
+from pathlib import Path
 import hashlib
 from collections import defaultdict
 
-# Helper functions
+""" Compute the hash of an individual file using the chosen hashing algorithm """
 def compute_file_hash(path, algorithm):
-    """ Compute the hash of the file using the specified algorithm """
     hash_func = hashlib.new(algorithm)
     with open(path, 'rb') as f:
         while chunk := f.read(8192):
             hash_func.update(chunk)
     return hash_func.hexdigest()
+
+""" Create a backup directory with a unique token """
+def create_backup_dir(prefix="dupes_backup", root=Path.cwd()):
+    while True:
+        # Generate a unique token to append to the end of the backup dir
+        token = uuid.uuid4()
+        backup_dir = root / f"{prefix}_{token}"
+
+        # Create the backup
+        try:
+            os.mkdir(backup_dir)
+            return backup_dir
+        except FileExistsError:
+            pass
 
 def main():
 
@@ -33,10 +49,10 @@ def main():
     # Make sure it is a valid directory
     if not os.path.exists(root):
         print("The specified directory does not exist.")
-        exit(1)
+        root = input("Enter the directory you want to search for duplicates in: ")
     if not os.path.isdir(root):
         print("The specified path is not a directory.")
-        exit(1)
+        root = input("Enter the directory you want to search for duplicates in: ")
 
     # Initialize dicts
     by_size = defaultdict(list) # Store by size and path(s)
@@ -68,6 +84,11 @@ def main():
                 # Keep a copy of the first dupe
                 if paths.index(p) != 0:
                     dupes.append(p)
+
+    # No duplicates
+    if len(dupes) < 1:
+        print("No duplicates are present, terminating the program . . .")
+        exit(0)
     
     # Prompt user to select files they would like to keep
     for i, d in enumerate(dupes, start=1): # Provide the user with a numbered list of the dupes
@@ -87,13 +108,23 @@ def main():
     # Remove the chosen files to keep from the dupes list
     ctr = 1 # Keep track of each file that is removed to account for changing size
     for i in indexes:
-        dupes.pop(i - ctr)
+        print(f"Keeping {dupes.pop(i - ctr)} . . .")
         ctr += 1
 
+    # Create a backup dir
+    backup_dir = create_backup_dir()
+    print(f"Created {backup_dir}")
+
+    # Copy the dupes over to the backup
+    print(f"Backing up duplicates in {backup_dir}")
+    for d in dupes:
+        print(f"Backed up {d}")
+        shutil.copy(d, backup_dir)
+
     # Delete what's left in the dupes list
-    for f in dupes:
-        print(f"Deleting {f} . . .")
-        os.remove(f)
+    for d in dupes:
+        print(f"Deleting {d} . . .")
+        os.remove(d)
 
 if __name__ == "__main__":
     main()
