@@ -17,8 +17,30 @@ from pathlib import Path
 import hashlib
 from collections import defaultdict
 
+""" Prompt the user for the directory they want to search for duplicates in """
+def prompt_root() -> Path:
+    while True:
+        raw = input("Enter the directory you want to search for duplicates in: ").strip()
+
+        # Check that they actually inputted a path
+        if not raw:
+            print("Path cannot be empty.")
+            continue
+
+        # Remove wrapping quotes
+        raw = raw.strip("'").strip('"')
+
+        # Expand ~ and env vars then normalize
+        expanded = os.path.expanduser(os.path.expandvars(raw))
+        path = Path(expanded)
+
+        # Return the absolute normalized path
+        if path.is_dir():
+            return path.resolve()
+        print("Invalid directory. Try again.")
+
 """ Compute the hash of an individual file using the chosen hashing algorithm """
-def compute_file_hash(path, algorithm):
+def compute_file_hash(path, algorithm="blake2b") -> str:
     hash_func = hashlib.new(algorithm)
     with open(path, 'rb') as f:
         while chunk := f.read(8192):
@@ -26,7 +48,7 @@ def compute_file_hash(path, algorithm):
     return hash_func.hexdigest()
 
 """ Create a backup directory with a unique token """
-def create_backup_dir(prefix="dupes_backup", root=Path.cwd()):
+def create_backup_dir(prefix="dupes_backup", root=Path.cwd()) -> Path:
     while True:
         # Generate a unique token to append to the end of the backup dir
         token = uuid.uuid4()
@@ -41,29 +63,13 @@ def create_backup_dir(prefix="dupes_backup", root=Path.cwd()):
 
 def main():
 
-    root = input("Enter the directory you want to search for duplicates in: ")
-
-    # Sanitize the input path
-    root = root.strip("'\"~$\/<>|?*")
-
-    # Make sure it is a valid directory
-    if not os.path.exists(root):
-        print("The specified directory does not exist.")
-        root = input("Enter the directory you want to search for duplicates in: ")
-    if not os.path.isdir(root):
-        print("The specified path is not a directory.")
-        root = input("Enter the directory you want to search for duplicates in: ")
+    root = prompt_root()
+    print(f"Searching for duplicates in {root}")
 
     # Initialize dicts
     by_size = defaultdict(list) # Store by size and path(s)
     by_hash = defaultdict(list) # Store by hash and path(s)
     dupes = []
-
-    # Ask the user for the hash algorithm to use
-    algorithm = input("Enter the hash algorithm to use (e.g., md5, sha1, sha256): ").lower()
-    if algorithm not in hashlib.algorithms_available:
-        print("The specified hash algorithm is not available.")
-        algorithm = input("Enter the hash algorithm to use (e.g., md5, sha1, sha256): ").lower()
 
     # Group files by size while walking through the directory
     for dirpath, _, filenames in os.walk(root):
@@ -75,7 +81,7 @@ def main():
     for paths in by_size.values():
         if len(paths) > 1:
             for p in paths:
-                by_hash[compute_file_hash(p, algorithm)].append(p)
+                by_hash[compute_file_hash(p)].append(p)
     
     # See if there are any possible dupes
     for paths in by_hash.values():
