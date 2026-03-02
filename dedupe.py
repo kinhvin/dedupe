@@ -19,11 +19,12 @@ import uuid
 from pathlib import Path
 import hashlib
 from collections import defaultdict
+import questionary
 
 """ Prompt the user for the directory they want to search for duplicates in """
 def prompt_root() -> Path:
     while True:
-        raw = input("Enter the directory you want to search for duplicates in: ").strip()
+        raw = questionary.path("Enter the path to the directory you want to search for duplicates in: ").ask()
 
         # Check that they actually inputted a path
         if not raw:
