@@ -20,28 +20,75 @@ from pathlib import Path
 import hashlib
 from collections import defaultdict
 import questionary
+from questionary import Choice
+from tkinter import filedialog
+
+""" Consts """
+TYPED_MODE = "typed"
+BROWSE_MODE = "browse"
+EXIT_CHOICE = "exit"
+RETRY_CHOICE = "retry"
+
+""" Validate that the inputted directory is valid """
+def validate_dir(path):
+    sanitized_path = Path(os.path.expanduser(os.path.expandvars(path.strip("'").strip('"'))))
+    return True if sanitized_path.is_dir() else "Please enter an existing directory."
 
 """ Prompt the user for the directory they want to search for duplicates in """
-def prompt_root() -> Path:
-    while True:
-        raw = questionary.path("Enter the path to the directory you want to search for duplicates in: ").ask()
+def prompt_root():
+    mode = questionary.select(
+        "Choose one:",
+        choices=[
+            Choice("Type a path", value=TYPED_MODE),
+            Choice("Browse folders", value=BROWSE_MODE),
+            Choice("Exit", value=EXIT_CHOICE)
+        ],
+    ).ask()
 
-        # Check that they actually inputted a path
-        if not raw:
-            print("Path cannot be empty.")
-            continue
+    if mode in {EXIT_CHOICE, None}:
+        return None
 
-        # Remove wrapping quotes
-        raw = raw.strip("'").strip('"')
+    elif mode == TYPED_MODE:
+        while True:
+            raw = questionary.path(
+                "Enter the path to the directory you want to search for duplicates in:",
+                only_directories=True,
+                validate=validate_dir,
+                ).ask()
 
-        # Expand ~ and env vars then normalize
-        expanded = os.path.expanduser(os.path.expandvars(raw))
-        path = Path(expanded)
+            # User canceled the prompt
+            if raw is None:
+                return None
+            
+            # Sanitize / normalize the path
+            root = Path(os.path.expanduser(os.path.expandvars(raw.strip("'").strip('"'))))
 
-        # Return the absolute normalized path
-        if path.is_dir():
-            return path.resolve()
-        print("Invalid directory. Try again.")
+            # Return the absolute normalized path
+            if root.is_dir():
+                return root.resolve()
+            print("Invalid directory. Try again.")
+
+    elif mode == BROWSE_MODE:
+        while True:
+            raw = filedialog.askdirectory(initialdir=Path.cwd(), mustexist=True)
+            
+            # User selected a folder
+            if raw:
+                return Path(raw).resolve()
+
+            # Handle cancellation
+            if not raw:
+                choice = questionary.select(
+                    "No folder selected. What next?",
+                    choices=[
+                        Choice("Choose again", value=RETRY_CHOICE),
+                        Choice("Exit program", value=EXIT_CHOICE),
+                    ]
+                ).ask()
+                if choice == RETRY_CHOICE:
+                    continue
+                else:
+                    return None
 
 """ Compute the hash of an individual file using the chosen hashing algorithm """
 def compute_file_hash(path, algorithm="blake2b") -> str:
@@ -68,6 +115,9 @@ def create_backup_dir(prefix="dupes_backup", root=Path.cwd()) -> Path:
 def main():
 
     root = prompt_root()
+    if root is None:
+        print("Exiting program...")
+        exit(0)
     print(f"Searching for duplicates in {root}")
 
     # Initialize dicts
@@ -101,24 +151,24 @@ def main():
         exit(0)
     
     # Prompt user to select files they would like to keep
-    for i, d in enumerate(dupes, start=1): # Provide the user with a numbered list of the dupes
-        print(f"{i}. {d}")
-    choices = input("Enter the indexes of the files you would like to keep (enter if none): ")
-
-    # Sort the user input into individual indexes
-    indexes = []
-    for c in choices.split(","):
-        c = c.strip()
-        if c.isdigit():
-            i = int(c)
-            if 1 <= i <= len(dupes):
-                indexes.append(i)
-    indexes = sorted(set(indexes))
+    # mode = questionary.select(
+    #     "Choose one:",
+    #     choices=[
+    #         Choice("Type a path", value=TYPED_MODE),
+    #         Choice("Browse folders", value=BROWSE_MODE),
+    #         Choice("Exit", value=EXIT_CHOICE)
+    #     ],
+    # )
+    choices = questionary.checkbox('' \
+    'Please choose what files to keep, enter if none',
+    choices=dupes
+    ).ask()
 
     # Remove the chosen files to keep from the dupes list
     ctr = 1 # Keep track of each file that is removed to account for changing size
-    for i in indexes:
-        print(f"Keeping {dupes.pop(i - ctr)} . . .")
+    for path in choices:
+        print(f"Keeping {path} . . .")
+        dupes.remove(path)
         ctr += 1
 
     # Create a backup dir
