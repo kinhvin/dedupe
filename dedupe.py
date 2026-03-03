@@ -151,14 +151,6 @@ def main():
         exit(0)
     
     # Prompt user to select files they would like to keep
-    # mode = questionary.select(
-    #     "Choose one:",
-    #     choices=[
-    #         Choice("Type a path", value=TYPED_MODE),
-    #         Choice("Browse folders", value=BROWSE_MODE),
-    #         Choice("Exit", value=EXIT_CHOICE)
-    #     ],
-    # )
     choices = questionary.checkbox('' \
     'Please choose what files to keep, enter if none',
     choices=dupes
