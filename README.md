@@ -15,8 +15,8 @@ A simple Python CLI tool to find, back up, and remove duplicate files in a direc
 ## Requirements
 
 - Python 3.9+
-
-No third-party dependencies.
+- questionary
+- tkinter
 
 ## Run
 
