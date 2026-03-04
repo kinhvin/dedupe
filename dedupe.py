@@ -1,7 +1,7 @@
 """ 
 Program designed to search for duplicates in a directory, 
-mark them for deletion and delete them accordingly
- """
+mark them for deletion and delete them accordingly with backup
+"""
 
 """ 
 Steps 
@@ -19,39 +19,68 @@ import uuid
 from pathlib import Path
 import hashlib
 from collections import defaultdict
-import questionary
+import questionary as q
 from questionary import Choice
-from tkinter import filedialog
+from tkinter import Tk, filedialog
 
 """ Consts """
 TYPED_MODE = "typed"
 BROWSE_MODE = "browse"
 EXIT_CHOICE = "exit"
+YES_CHOICE = "yes"
 RETRY_CHOICE = "retry"
+KEEP_NONE_CHOICE = "none"
+KEEP_SELECT_CHOICE = "select"
+KEEP_ALL_CHOICE = "all"
 
 """ Validate that the inputted directory is valid """
-def validate_dir(path):
+def validate_dir(path: str) -> bool | str:
     sanitized_path = Path(os.path.expanduser(os.path.expandvars(path.strip("'").strip('"'))))
     return True if sanitized_path.is_dir() else "Please enter an existing directory."
 
+""" Enables tkinter directory selection to open focused """
+def browse_dir() -> Path | None:
+    # Create a root window and hide it
+    root = Tk()
+
+    # Set the root window to stay on top
+    root.attributes("-topmost", True)
+
+    # Make the root window completely transparent
+    root.attributes("-alpha", 0)
+
+    try:
+        # Open the native directory picker
+        raw = filedialog.askdirectory(
+            parent=root,
+            initialdir=Path.cwd(),
+            mustexist=True,
+            title="Choose a directory",
+        )
+        return Path(raw).resolve() if raw else None
+    finally:
+        # Cleanup
+        root.destroy()
+
 """ Prompt the user for the directory they want to search for duplicates in """
 def prompt_root():
-    mode = questionary.select(
+    mode = q.select(
         "Choose one:",
         choices=[
             Choice("Type a path", value=TYPED_MODE),
             Choice("Browse folders", value=BROWSE_MODE),
-            Choice("Exit", value=EXIT_CHOICE)
+            Choice("Exit", value=EXIT_CHOICE),
         ],
     ).ask()
 
     if mode in {EXIT_CHOICE, None}:
         return None
 
+    # User types the directory with autocompletion
     elif mode == TYPED_MODE:
         while True:
-            raw = questionary.path(
-                "Enter the path to the directory you want to search for duplicates in:",
+            raw = q.path(
+                "Directory to scan (tab or type for autocomplete):",
                 only_directories=True,
                 validate=validate_dir,
                 ).ask()
@@ -61,24 +90,43 @@ def prompt_root():
                 return None
             
             # Sanitize / normalize the path
-            root = Path(os.path.expanduser(os.path.expandvars(raw.strip("'").strip('"'))))
+            root = Path(
+                os.path.expanduser(
+                    os.path.expandvars(
+                        raw.strip("'").strip('"')
+                        )
+                    )
+                )
 
             # Return the absolute normalized path
             if root.is_dir():
                 return root.resolve()
             print("Invalid directory. Try again.")
 
+    # Opens default directory browser (FileExplorer, Finder, etc)
     elif mode == BROWSE_MODE:
         while True:
-            raw = filedialog.askdirectory(initialdir=Path.cwd(), mustexist=True)
+            raw = browse_dir()
             
             # User selected a folder
             if raw:
-                return Path(raw).resolve()
+                confirm = q.select(
+                    f"Use this directory?\n{raw}",
+                    choices=[
+                        Choice("Yes", value=YES_CHOICE),
+                        Choice("Choose again", value=RETRY_CHOICE),
+                        Choice("Exit program", value=EXIT_CHOICE),
+                    ],
+                ).ask()
+                if confirm == YES_CHOICE:
+                    return raw
+                if confirm == RETRY_CHOICE:
+                    continue
+                return None
 
             # Handle cancellation
             if not raw:
-                choice = questionary.select(
+                choice = q.select(
                     "No folder selected. What next?",
                     choices=[
                         Choice("Choose again", value=RETRY_CHOICE),
@@ -111,6 +159,22 @@ def create_backup_dir(prefix="dupes_backup", root=Path.cwd()) -> Path:
             return backup_dir
         except FileExistsError:
             pass
+
+def backup_deletion_flow(dupes: list[Path]):
+    # Create a backup dir
+    backup_dir = create_backup_dir()
+    print(f"Created {backup_dir}")
+
+    # Copy the dupes over to the backup
+    print(f"Backing up duplicates in {backup_dir}")
+    for d in dupes:
+        print(f"Backed up {d}")
+        shutil.copy(d, backup_dir)
+
+    # Delete what's left in the dupes list
+    for d in dupes:
+        print(f"Deleting {d}...")
+        os.remove(d)
 
 def main():
 
@@ -147,36 +211,45 @@ def main():
 
     # No duplicates
     if len(dupes) < 1:
-        print("No duplicates are present, terminating the program . . .")
+        print("No duplicates are present, terminating the program...")
         exit(0)
-    
-    # Prompt user to select files they would like to keep
-    choices = questionary.checkbox('' \
-    'Please choose what files to keep, enter if none',
-    choices=dupes
+
+    # Ask if the user would like to keep any files
+    keep = q.select(
+        "Select one:",
+        choices=[
+            Choice("Backup and delete all duplicates", value=KEEP_NONE_CHOICE),
+            Choice("Keep select duplicates before backup and deletion", value=KEEP_SELECT_CHOICE),
+            Choice("Keep all duplicates and terminate program", value=KEEP_ALL_CHOICE),
+        ]
     ).ask()
 
-    # Remove the chosen files to keep from the dupes list
-    ctr = 1 # Keep track of each file that is removed to account for changing size
-    for path in choices:
-        print(f"Keeping {path} . . .")
-        dupes.remove(path)
-        ctr += 1
+    # Delete all dupes
+    if keep == KEEP_NONE_CHOICE:
+        backup_deletion_flow(dupes)
 
-    # Create a backup dir
-    backup_dir = create_backup_dir()
-    print(f"Created {backup_dir}")
+    # Keep selected dupes
+    elif keep == KEEP_SELECT_CHOICE:
+        # Prompt user to select files they would like to keep
+        choices = q.checkbox("" \
+        "Please choose what files to keep, enter if none",
+        choices=dupes
+        ).ask()
 
-    # Copy the dupes over to the backup
-    print(f"Backing up duplicates in {backup_dir}")
-    for d in dupes:
-        print(f"Backed up {d}")
-        shutil.copy(d, backup_dir)
+        # Remove the chosen files to keep from the dupes list
+        ctr = 1 # Keep track of each file that is removed to account for changing size
+        for path in choices:
+            print(f"Keeping {path}...")
+            dupes.remove(path)
+            ctr += 1
 
-    # Delete what's left in the dupes list
-    for d in dupes:
-        print(f"Deleting {d} . . .")
-        os.remove(d)
+        # Backup and delete the rest of the dupes
+        backup_deletion_flow(dupes)
+
+    # Keep all and terminate the program
+    else:
+        print("Keeping all duplicates, terminating the program...")
+        exit(0)
 
 if __name__ == "__main__":
     main()
