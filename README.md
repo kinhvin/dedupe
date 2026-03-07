@@ -19,6 +19,8 @@ A simple Python CLI tool to find, back up, and remove duplicate files in a direc
 - tkinter
 
 ## Run
+```bash
+pip install questionary
 
 ```bash
-python3 dedupe.py
+python dedupe.py or python3 dedupe.py
